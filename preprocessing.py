@@ -203,4 +203,4 @@ def visualize_samples(folder, item):
 if __name__ == '__main__':   
         
     #create_dataset('./seg_pred', 'valid', './dataset')   
-    visualize_samples(your_folder, item)
+    visualize_samples('./dataset', 1)
