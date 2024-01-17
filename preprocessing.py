@@ -176,7 +176,7 @@ def create_dataset(folder_dir, anns_file, save_folder):
                 pickle.dump(data, file)
             file_name += 1
 
-def visualize_samples(folder, item)
+def visualize_samples(folder, item):
     with open(f'{folder}/{item}.pkl', 'rb') as file:
       data = pickle.load(file)
     
@@ -200,8 +200,7 @@ def visualize_samples(folder, item)
     
     
             
-if __name__ == '__main__':
-
-   
+if __name__ == '__main__':   
         
-    create_dataset('./seg_pred', 'valid', './dataset')   
+    #create_dataset('./seg_pred', 'valid', './dataset')   
+    visualize_samples(your_folder, item)
