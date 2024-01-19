@@ -21,7 +21,7 @@ def evaluate(net, dataloader, device, amp, iou, viz_file):
             image, mask_true = batch
             
             
-            image = image.unsqueeze(1)
+            #image = image.unsqueeze(1)
             # # move images and labels to correct device and type
             # image = image.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
             # mask_true = mask_true.to(device=device, dtype=torch.uint8)
@@ -44,7 +44,19 @@ def evaluate(net, dataloader, device, amp, iou, viz_file):
                 assert mask_true.min() >= 0 and mask_true.max() <= 1, 'True mask indices should be in [0, 1]'
                 mask_pred = (F.sigmoid(mask_pred) > 0.5).float()
                 # compute the Dice score
-                dice_score += dice_coeff(mask_pred, mask_true, reduce_batch_first=False)
+                #print(f'pred: {mask_pred.shape}, true: {mask_true.shape}')
+                dice_score += dice_coeff(mask_pred.squeeze(1), mask_true, reduce_batch_first=False)
+                if viz_file!=None:
+                    if global_step%20 == 0:
+                      viz_img = mask_true[0]
+                      viz_pred = mask_pred[0]
+                      #with open(f'{viz_file}/pkl_{cnt}.pkl', 'wb') as file:
+                          #pickle.dump([mask_true, mask_pred], file)
+                      plot_img_and_mask(viz_img.cpu().numpy(), viz_pred.cpu().numpy().squeeze(0), f'{viz_file}/{cnt}', True)
+                      cnt += 1
+                    global_step+=1
+                if iou:
+                    iouVector += calculate_iou_per_class(mask_pred.squeeze(1), mask_true, net.n_classes)
             else:
                 assert mask_true.min() >= 0 and mask_true.max() < net.n_classes, 'True mask indices should be in [0, n_classes['
                 # convert to one-hot format
@@ -52,8 +64,7 @@ def evaluate(net, dataloader, device, amp, iou, viz_file):
                 mask_pred = F.one_hot(mask_pred.argmax(dim=1), net.n_classes).permute(0, 3, 1, 2).float()
                 # compute the Dice score, ignoring background
                 dice_score += multiclass_dice_coeff(mask_pred[:, 1:], mask_true[:, 1:], reduce_batch_first=False)
-                if iou:
-                    iouVector += calculate_iou_per_class(mask_pred, mask_true, net.n_classes)
+                
                 if viz_file!=None:
                     if global_step % 40 == 0:
                       viz_img = mask_true[0].argmax(dim=0)
@@ -63,7 +74,8 @@ def evaluate(net, dataloader, device, amp, iou, viz_file):
                       plot_img_and_mask(viz_img.cpu().numpy(), viz_pred.cpu().numpy(), f'{viz_file}/{cnt}')
                       cnt += 1
                     global_step+=1
-                    
+                if iou:
+                    iouVector += calculate_iou_per_class(mask_pred, mask_true, net.n_classes)      
     net.train()
     if iou == False:
         return dice_score / max(num_val_batches, 1)
@@ -86,6 +98,9 @@ def calculate_iou_per_class(predicted_masks, true_masks, num_classes):
     - iou_per_class (torch.Tensor): IoU for each class with shape (num_classes,).
     """
     iou_per_class = torch.zeros(num_classes)
+    if num_classes == 1:
+      predicted_masks = predicted_masks.unsqueeze(1)
+      true_masks = true_masks.unsqueeze(1)
 
     for i in range(num_classes):
         # Compute True Positive (TP), False Positive (FP), and False Negative (FN)

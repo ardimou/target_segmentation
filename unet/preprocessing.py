@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
 """
 Created on Tue Jan 16 17:40:33 2024
 
@@ -24,22 +24,13 @@ def collate_fn(batch):
 
 class Preprocess(Dataset):
     def __init__(self, folder_dir, ep_start, ep_end, save_file=False):
+        
         self.folder_dir = folder_dir
-        self.seg_files_temp = [file for file in os.listdir(self.folder_dir)]
-        with open(f'{self.folder_dir}/anns.pkl', 'rb') as file:
-            anns = pickle.load(file)
-        self.seg_files = []
-        self.image_files = []
-        
-        for ind, file in self.seg_files_temp:
-            item1 = anns[ind]
-            item2 = anns[ind + 1]
-            if item2['video'] == item1['video']:
-                self.seg_files.append([f'{self.folder_dir}/S_{ind}.pkl', f'{self.folder_dir}/S_{ind + 1}.pkl', anns[ind]])
-        
+        #self.seg_files = [file for file in os.listdir(self.folder_dir)]
+        self.seg_files = [f'{i}.pkl' for i in range(ep_start, ep_end)]
         
     def __len__(self):
-        return len(self.image_files)
+        return len(self.seg_files)
               
     def segm_masks(self, seg):
         
@@ -85,7 +76,7 @@ class Preprocess(Dataset):
             heightmapV[indN, :, :] = self.heightmap_images(data['heightmap'])
             
         
-        input_data = torch.cat((torch.from_numpy(rgbV), torch.from_numpy(heightmapV).unsqueeze(1)), dim=1)
+        input_data = torch.cat((torch.from_numpy(rgbV), torch.from_numpy(heightmapV).unsqueeze(0)), dim=0)
         output_data = torch.from_numpy(segV)
         #print(f'input: {input_data.shape}')
         #print(f'output: {output_data.shape}')
@@ -95,25 +86,45 @@ class Preprocess(Dataset):
     def __getitem__(self, ind):
         #image_files = ([file for file in os.listdir(self.folder_dir)])
         dim, nr_objects = 200, 6
+        #print(ind)
+        with open(f'{self.folder_dir}/{self.seg_files[ind]}', 'rb') as file:
+            data = pickle.load(file)            
+            
+        #seg1 = self.preprocess_seg(data['S_t1'], data['target_t1'])
+        seg1 = torch.zeros((200, 200), dtype=torch.uint8)
+        seg2 = torch.zeros((200, 200), dtype=torch.uint8)
+        
+        seg1[data['S_t1']!=0] = 1
+        #seg2 = data['S_t2']
+        seg2[data['S_t2']!=0] = 1
+        
+        
+        push = data['push'].astype(np.int16)
+        target1 = data['target_t1']
+        target1[target1!=0] = 1
+        
+        target2 = data['target_t2']
+        target2[target2!=0] = 1
+         
+        width = 5
+        push_img = self.draw_line(push[0,:-1], push[1,:-1], width, seg1.shape)
+        input_data = torch.cat(((seg1).unsqueeze(0), (seg2).unsqueeze(0), torch.from_numpy(target1).unsqueeze(0), torch.from_numpy(push_img).unsqueeze(0)), dim=0)
+        output_data = torch.from_numpy(target2)
+        
+        return input_data, output_data
     
-    
-        with open(f'{self.seg_files[ind][0]}', 'rb') as file:
-            seg1 =  pickle.load(file)
+    def preprocess_seg(self, seg, target):
+        """
+        create a segmentation matrix, where every mask that belongs to the target 
+        is equal to 0.5, or 1 if it belongs to any other object
+        """
         
-        with open(f'{self.seg_files[ind][1]}', 'rb') as file:
-            seg2 =  pickle.load(file)
+        final_seg = np.zeros(seg.shape)
         
-        anns = self.seg_files[ind][2]
+        final_seg[seg!=0] = 0.5
+        final_seg[target!=0] = 1
         
-        with open(anns['file_name'], 'rb') as file:
-            data =  pickle.load(file)
-        
-        target = data['target'] 
-        p1p2 = data['p1_p2']
-        push_img = self.process_push(p1p2)
-        
-        
-        return img, data
+        return final_seg
 
     def process_push(self, p1p2):
         width = 2
@@ -121,10 +132,7 @@ class Preprocess(Dataset):
         push = self.scale_value(p1p2, -0.25, 0.25, 0, 199)
         push_img = self.draw_line(push[0], push[1], width, image_size)
         
-        return push_img
-        
-        
-        
+        return push_img       
         
     def scale_value(self, value, min_original, max_original, min_scaled, max_scaled):
         scaled_value = ((value - min_original) / (max_original - min_original)) * (max_scaled - min_scaled) + min_scaled
@@ -136,8 +144,8 @@ class Preprocess(Dataset):
         # Bresenham's line algorithm
         x1, y1 = p1
         x2, y2 = p2
-        dx = abs(x2 - x1)
-        dy = abs(y2 - y1)
+        dx = np.abs(x2 - x1)
+        dy = np.abs(y2 - y1)
         sx = 1 if x1 < x2 else -1
         sy = 1 if y1 < y2 else -1
         err = dx - dy
@@ -166,8 +174,8 @@ class Preprocess(Dataset):
  
 if __name__ == '__main__':
 
-    dataset = Preprocess('C:/Users/argdi/Desktop/eketa/h-pushing-UNet/Images', 0, 100)
-    dataloader = DataLoader(dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
+    dataset = Preprocess('../dataset', 0, 100)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
     
     cnt = 0
     # for batch in dataloader:
@@ -177,6 +185,7 @@ if __name__ == '__main__':
             
         
     for batch_id, (inputs, targets) in enumerate(dataloader):
+        
         cnt += 1
         print(cnt*256/13187)
         
